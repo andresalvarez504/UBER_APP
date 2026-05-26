@@ -1,127 +1,145 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
-  View, Text, StyleSheet, FlatList,
-  TouchableOpacity, ActivityIndicator, StatusBar,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  ActivityIndicator, StatusBar, RefreshControl,
 } from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
 import { getTripHistory } from '../storage/Firestore.Service';
+
+const statusConfig = {
+  completed:   { color: '#22C55E', label: 'Completado',  icon: 'check-circle-outline' },
+  in_progress: { color: '#FFC61A', label: 'En curso',    icon: 'clock-outline' },
+  requested:   { color: '#60A5FA', label: 'Solicitado',  icon: 'map-marker-outline' },
+};
+
+const vehicleIcon = { Económico: 'car-outline', XL: 'car-estate', Premium: 'star-outline' };
 
 const HomeScreen = ({ navigation }) => {
   const user = useSelector(state => state.user);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchHistory = async () => {
-      if (user.docId) {
-        try {
-          const data = await getTripHistory(user.docId);
-          setHistory(data);
-        } catch (e) {
-          console.log(e);
-        }
-      }
-      setLoading(false);
-    };
-    fetchHistory();
+  const fetchHistory = useCallback(async () => {
+    if (user.docId) {
+      try {
+        const data = await getTripHistory(user.docId);
+        setHistory(data);
+      } catch (e) { console.log(e); }
+    }
+    setLoading(false);
+    setRefreshing(false);
   }, [user.docId]);
 
-  const statusColor = (status) => {
-    if (status === 'completed') return '#22C55E';
-    if (status === 'in_progress') return '#FFC61A';
-    return '#888';
-  };
+  useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
-  const statusLabel = (status) => {
-    if (status === 'completed') return 'Completado';
-    if (status === 'in_progress') return 'En curso';
-    return 'Solicitado';
-  };
+  const onRefresh = () => { setRefreshing(true); fetchHistory(); };
 
-  const renderTrip = ({ item }) => (
-    <View style={styles.tripCard}>
-      <View style={styles.tripHeader}>
-        <View style={styles.tripIconWrap}>
-          <Text style={styles.tripIconText}>🚗</Text>
-        </View>
-        <View style={styles.tripMeta}>
-          <Text style={styles.vehicleType}>{item.vehicleType || 'Económico'}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor(item.status) + '22' }]}>
-            <View style={[styles.statusDot, { backgroundColor: statusColor(item.status) }]} />
-            <Text style={[styles.statusText, { color: statusColor(item.status) }]}>
-              {statusLabel(item.status)}
-            </Text>
+  const totalSpent = history.reduce((sum, t) => sum + (t.fare || 0), 0);
+  const completed = history.filter(t => t.status === 'completed').length;
+
+  const renderTrip = ({ item }) => {
+    const cfg = statusConfig[item.status] || statusConfig.requested;
+    const vIcon = vehicleIcon[item.vehicleType] || 'car-outline';
+    return (
+      <View style={styles.tripCard}>
+        <View style={styles.tripTop}>
+          <View style={styles.tripIconWrap}>
+            <Icon name={vIcon} size={22} color="#FFC61A" />
+          </View>
+          <View style={styles.tripMeta}>
+            <Text style={styles.vehicleType}>{item.vehicleType || 'Económico'}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: cfg.color + '22' }]}>
+              <Icon name={cfg.icon} size={11} color={cfg.color} style={{ marginRight: 4 }} />
+              <Text style={[styles.statusText, { color: cfg.color }]}>{cfg.label}</Text>
+            </View>
+          </View>
+          <View style={styles.tripFareWrap}>
+            <Text style={styles.tripFare}>${item.fare?.toLocaleString()}</Text>
+            <Text style={styles.tripCurrency}>COP</Text>
           </View>
         </View>
-        <Text style={styles.tripFare}>${item.fare?.toLocaleString()}</Text>
-      </View>
-      <View style={styles.tripRoute}>
-        <View style={styles.routeLine}>
-          <View style={styles.dotGreen} />
-          <View style={styles.routeDash} />
-          <View style={styles.dotRed} />
+
+        <View style={styles.divider} />
+
+        <View style={styles.tripRoute}>
+          <View style={styles.routeColumn}>
+            <View style={styles.routeDot}>
+              <View style={styles.dotInnerGreen} />
+            </View>
+            <View style={styles.routeLine} />
+            <View style={styles.routeDot}>
+              <View style={styles.dotInnerRed} />
+            </View>
+          </View>
+          <View style={styles.routeLabels}>
+            <Text style={styles.routeOrigin} numberOfLines={1}>{item.origin}</Text>
+            <Text style={styles.routeDest} numberOfLines={1}>{item.destination}</Text>
+          </View>
         </View>
-        <View style={styles.routeLabels}>
-          <Text style={styles.routeText} numberOfLines={1}>{item.origin}</Text>
-          <Text style={styles.routeText} numberOfLines={1}>{item.destination}</Text>
-        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000" />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
+        <View>
           <Text style={styles.greeting}>Hola, {user.fullName?.split(' ')[0] || 'Pasajero'} 👋</Text>
-          <Text style={styles.subtitle}>¿A dónde vas hoy?</Text>
+          <Text style={styles.date}>{new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</Text>
         </View>
-        <TouchableOpacity
-          style={styles.avatar}
-          onPress={() => navigation.navigate('Config')}>
-          <Text style={styles.avatarText}>
-            {user.fullName?.charAt(0).toUpperCase() || '?'}
-          </Text>
+        <TouchableOpacity style={styles.avatarBtn} onPress={() => navigation.navigate('Config')}>
+          <Text style={styles.avatarText}>{user.fullName?.charAt(0).toUpperCase() || '?'}</Text>
         </TouchableOpacity>
       </View>
 
-      {/* Solicitar viaje */}
-      <TouchableOpacity
-        style={styles.requestCard}
-        onPress={() => navigation.navigate('Service')}
-        activeOpacity={0.9}>
-        <View style={styles.requestContent}>
-          <View>
-            <Text style={styles.requestTitle}>Solicitar viaje</Text>
-            <Text style={styles.requestSub}>Elige tu destino ahora</Text>
-          </View>
-          <View style={styles.requestArrowWrap}>
-            <Text style={styles.requestArrow}>→</Text>
-          </View>
+      {/* Stats */}
+      <View style={styles.statsRow}>
+        <View style={styles.statCard}>
+          <Icon name="map-marker-path" size={22} color="#FFC61A" />
+          <Text style={styles.statValue}>{history.length}</Text>
+          <Text style={styles.statLabel}>Viajes</Text>
         </View>
-        <View style={styles.requestTypes}>
-          {['🚗 Económico', '🚙 XL', '⭐ Premium'].map(t => (
-            <View key={t} style={styles.typeChip}>
-              <Text style={styles.typeChipText}>{t}</Text>
-            </View>
-          ))}
+        <View style={styles.statCard}>
+          <Icon name="check-decagram-outline" size={22} color="#22C55E" />
+          <Text style={styles.statValue}>{completed}</Text>
+          <Text style={styles.statLabel}>Completados</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Icon name="cash-multiple" size={22} color="#60A5FA" />
+          <Text style={styles.statValue}>${(totalSpent / 1000).toFixed(0)}K</Text>
+          <Text style={styles.statLabel}>Gastado</Text>
+        </View>
+      </View>
+
+      {/* Solicitar */}
+      <TouchableOpacity style={styles.requestCard} onPress={() => navigation.navigate('Service')} activeOpacity={0.9}>
+        <View style={styles.requestLeft}>
+          <Text style={styles.requestTitle}>¿A dónde vamos?</Text>
+          <Text style={styles.requestSub}>Toca para solicitar tu viaje</Text>
+        </View>
+        <View style={styles.requestIconWrap}>
+          <Icon name="arrow-right" size={22} color="#000" />
         </View>
       </TouchableOpacity>
 
       {/* Historial */}
       <View style={styles.sectionRow}>
-        <Text style={styles.sectionTitle}>Historial de viajes</Text>
-        <Text style={styles.sectionCount}>{history.length} viajes</Text>
+        <Text style={styles.sectionTitle}>Historial</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countText}>{history.length}</Text>
+        </View>
       </View>
 
       {loading ? (
         <ActivityIndicator color="#FFC61A" style={{ marginTop: 32 }} />
       ) : history.length === 0 ? (
         <View style={styles.emptyWrap}>
-          <Text style={styles.emptyIcon}>🗺️</Text>
+          <Icon name="map-search-outline" size={56} color="#222" />
           <Text style={styles.emptyTitle}>Sin viajes aún</Text>
           <Text style={styles.emptyText}>Solicita tu primer viaje y aparecerá aquí.</Text>
         </View>
@@ -131,7 +149,8 @@ const HomeScreen = ({ navigation }) => {
           keyExtractor={item => item.id}
           renderItem={renderTrip}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 32 }}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFC61A" />}
         />
       )}
     </View>
@@ -140,59 +159,50 @@ const HomeScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0A', paddingHorizontal: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 56, marginBottom: 24 },
-  headerLeft: { flex: 1 },
-  greeting: { fontSize: 24, fontWeight: '800', color: '#FFFFFF', letterSpacing: -0.5 },
-  subtitle: { fontSize: 14, color: '#555', marginTop: 2 },
-  avatar: {
-    width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFC61A',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  avatarText: { fontSize: 18, fontWeight: '800', color: '#000' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 56, marginBottom: 20 },
+  greeting: { fontSize: 24, fontWeight: '800', color: '#FFF', letterSpacing: -0.5 },
+  date: { fontSize: 13, color: '#555', marginTop: 2, textTransform: 'capitalize' },
+  avatarBtn: { width: 46, height: 46, borderRadius: 16, backgroundColor: '#FFC61A', justifyContent: 'center', alignItems: 'center' },
+  avatarText: { fontSize: 20, fontWeight: '800', color: '#000' },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  statCard: { flex: 1, backgroundColor: '#161616', borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#1E1E1E' },
+  statValue: { fontSize: 20, fontWeight: '800', color: '#FFF', marginTop: 6 },
+  statLabel: { fontSize: 11, color: '#555', marginTop: 2 },
   requestCard: {
-    backgroundColor: '#FFC61A', borderRadius: 20, padding: 20, marginBottom: 28,
+    backgroundColor: '#FFC61A', borderRadius: 20, padding: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24,
   },
-  requestContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  requestTitle: { fontSize: 20, fontWeight: '800', color: '#000' },
-  requestSub: { fontSize: 13, color: '#00000088', marginTop: 2 },
-  requestArrowWrap: {
-    width: 40, height: 40, borderRadius: 20, backgroundColor: '#00000015',
-    justifyContent: 'center', alignItems: 'center',
-  },
-  requestArrow: { fontSize: 20, color: '#000' },
-  requestTypes: { flexDirection: 'row', gap: 8 },
-  typeChip: { backgroundColor: '#00000015', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
-  typeChipText: { fontSize: 12, color: '#000', fontWeight: '600' },
-  sectionRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  requestLeft: { flex: 1 },
+  requestTitle: { fontSize: 18, fontWeight: '800', color: '#000' },
+  requestSub: { fontSize: 13, color: '#00000077', marginTop: 2 },
+  requestIconWrap: { width: 42, height: 42, borderRadius: 14, backgroundColor: '#00000015', justifyContent: 'center', alignItems: 'center' },
+  sectionRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   sectionTitle: { fontSize: 18, fontWeight: '700', color: '#FFF' },
-  sectionCount: { fontSize: 13, color: '#555' },
-  tripCard: {
-    backgroundColor: '#161616', borderRadius: 16, padding: 16,
-    marginBottom: 12, borderWidth: 1, borderColor: '#222',
-  },
-  tripHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  tripIconWrap: {
-    width: 40, height: 40, borderRadius: 12, backgroundColor: '#222',
-    justifyContent: 'center', alignItems: 'center', marginRight: 12,
-  },
-  tripIconText: { fontSize: 20 },
+  countBadge: { backgroundColor: '#FFC61A22', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 20 },
+  countText: { color: '#FFC61A', fontWeight: '700', fontSize: 12 },
+  tripCard: { backgroundColor: '#161616', borderRadius: 18, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#1E1E1E' },
+  tripTop: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  tripIconWrap: { width: 44, height: 44, borderRadius: 14, backgroundColor: '#FFC61A15', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   tripMeta: { flex: 1 },
-  vehicleType: { color: '#FFF', fontWeight: '700', fontSize: 14 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
-  statusDot: { width: 6, height: 6, borderRadius: 3, marginRight: 5 },
+  vehicleType: { color: '#FFF', fontWeight: '700', fontSize: 15 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', marginTop: 5, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, alignSelf: 'flex-start' },
   statusText: { fontSize: 11, fontWeight: '600' },
-  tripFare: { color: '#FFC61A', fontWeight: '800', fontSize: 16 },
-  tripRoute: { flexDirection: 'row', gap: 12 },
-  routeLine: { alignItems: 'center', paddingTop: 4 },
-  dotGreen: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
-  routeDash: { width: 1, height: 20, backgroundColor: '#333', marginVertical: 3 },
-  dotRed: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
-  routeLabels: { flex: 1, gap: 10 },
-  routeText: { color: '#888', fontSize: 13 },
-  emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 80 },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyTitle: { color: '#FFF', fontSize: 18, fontWeight: '700', marginBottom: 6 },
-  emptyText: { color: '#555', fontSize: 14, textAlign: 'center' },
+  tripFareWrap: { alignItems: 'flex-end' },
+  tripFare: { color: '#FFC61A', fontWeight: '800', fontSize: 17 },
+  tripCurrency: { color: '#555', fontSize: 10, marginTop: 2 },
+  divider: { height: 1, backgroundColor: '#1E1E1E', marginBottom: 12 },
+  tripRoute: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  routeColumn: { alignItems: 'center', width: 16 },
+  routeDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#1E1E1E', justifyContent: 'center', alignItems: 'center' },
+  dotInnerGreen: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#22C55E' },
+  dotInnerRed: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' },
+  routeLine: { width: 1, height: 20, backgroundColor: '#2A2A2A', marginVertical: 2 },
+  routeLabels: { flex: 1, gap: 12 },
+  routeOrigin: { color: '#CCC', fontSize: 13, fontWeight: '500' },
+  routeDest: { color: '#777', fontSize: 13 },
+  emptyWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingBottom: 100 },
+  emptyTitle: { color: '#333', fontSize: 18, fontWeight: '700', marginTop: 16 },
+  emptyText: { color: '#333', fontSize: 14, textAlign: 'center', marginTop: 6 },
 });
 
 export default HomeScreen;
