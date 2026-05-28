@@ -181,6 +181,7 @@ npx react-native run-ios
 |--------|-----|----------|
 | Andrés Ferandez | Estudiante | `feature/andres` |
 | Saray Lopez| Estudiante |`feature/Saray` |
+|Jhonier Rodriguez| Estudiante|`future/jhonier`| 
 
 ---
 
