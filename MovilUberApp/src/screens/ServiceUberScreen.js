@@ -100,41 +100,33 @@ const ServiceUberScreen = ({ navigation }) => {
     }
   };
 
-  const autocompleteQuery = {
-    key: GOOGLE_API_KEY,
-    language: 'es',
-    components: 'country:co',
-    location: '6.2442,-75.5812',
-    radius: '50000',
-  };
-
-  const autocompleteStyles = {
-    container: { flex: 1 },
-    textInputContainer: { backgroundColor: 'transparent', paddingHorizontal: 0 },
+  const placesStyles = {
+    container: { flex: 0, zIndex: 999 },
+    textInputContainer: { backgroundColor: 'transparent', zIndex: 999 },
     textInput: {
       backgroundColor: '#0F0F0F',
       color: '#FFF',
       fontSize: 14,
+      height: 44,
       borderRadius: 10,
       paddingHorizontal: 12,
-      height: 44,
       borderWidth: 1,
       borderColor: '#2A2A2A',
       marginBottom: 0,
     },
     listView: {
-      backgroundColor: '#1E1E1E',
+      backgroundColor: '#1A1A1A',
       borderRadius: 12,
-      marginTop: 2,
       borderWidth: 1,
       borderColor: '#2A2A2A',
-      elevation: 10,
+      marginTop: 2,
       zIndex: 9999,
+      elevation: 9999,
     },
-    row: { backgroundColor: '#1E1E1E', paddingVertical: 12, paddingHorizontal: 14 },
+    row: { backgroundColor: '#1A1A1A', paddingVertical: 12, paddingHorizontal: 14 },
     separator: { height: 1, backgroundColor: '#2A2A2A' },
     description: { color: '#CCC', fontSize: 13 },
-    poweredContainer: { backgroundColor: '#1E1E1E', borderTopWidth: 0 },
+    poweredContainer: { display: 'none' },
     powered: { display: 'none' },
   };
 
@@ -151,37 +143,39 @@ const ServiceUberScreen = ({ navigation }) => {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Panel de búsqueda — FUERA del ScrollView para que el teclado funcione */}
+      {/* Panel de búsqueda — FUERA del ScrollView */}
       <View style={styles.searchPanel}>
-
         {/* Origen */}
         <View style={styles.searchRow}>
           <View style={styles.dotGreen} />
-          <GooglePlacesAutocomplete
-            ref={originRef}
-            placeholder="¿Desde dónde sales?"
-            minLength={2}
-            fetchDetails={true}
-            onPress={(data, details = null) => {
-              setOriginName(data.description);
-              if (details?.geometry?.location) {
-                setOriginCoord({
-                  latitude: details.geometry.location.lat,
-                  longitude: details.geometry.location.lng,
-                });
-              }
-            }}
-            query={autocompleteQuery}
-            styles={autocompleteStyles}
-            enablePoweredByContainer={false}
-            debounce={400}
-            keepResultsAfterBlur={true}
-            textInputProps={{
-              placeholderTextColor: '#555',
-              returnKeyType: 'search',
-              clearButtonMode: 'while-editing',
-            }}
-          />
+          <View style={{ flex: 1 }}>
+            <GooglePlacesAutocomplete
+              ref={originRef}
+              placeholder="¿Desde dónde sales?"
+              onPress={(data, details = null) => {
+                setOriginName(data.description);
+                if (details?.geometry?.location) {
+                  setOriginCoord({
+                    latitude: details.geometry.location.lat,
+                    longitude: details.geometry.location.lng,
+                  });
+                }
+              }}
+              query={{
+                key: GOOGLE_API_KEY,
+                language: 'es',
+                components: 'country:co',
+                location: '6.2442,-75.5812',
+                radius: '50000',
+              }}
+              fetchDetails
+              enablePoweredByContainer={false}
+              styles={placesStyles}
+              debounce={300}
+              keepResultsAfterBlur={false}
+              textInputProps={{ placeholderTextColor: '#555' }}
+            />
+          </View>
           {originName ? (
             <TouchableOpacity onPress={() => {
               originRef.current?.clear();
@@ -198,31 +192,34 @@ const ServiceUberScreen = ({ navigation }) => {
         {/* Destino */}
         <View style={styles.searchRow}>
           <View style={styles.dotRed} />
-          <GooglePlacesAutocomplete
-            ref={destRef}
-            placeholder="¿A dónde vas?"
-            minLength={2}
-            fetchDetails={true}
-            onPress={(data, details = null) => {
-              setDestName(data.description);
-              if (details?.geometry?.location) {
-                setDestCoord({
-                  latitude: details.geometry.location.lat,
-                  longitude: details.geometry.location.lng,
-                });
-              }
-            }}
-            query={autocompleteQuery}
-            styles={autocompleteStyles}
-            enablePoweredByContainer={false}
-            debounce={400}
-            keepResultsAfterBlur={true}
-            textInputProps={{
-              placeholderTextColor: '#555',
-              returnKeyType: 'search',
-              clearButtonMode: 'while-editing',
-            }}
-          />
+          <View style={{ flex: 1 }}>
+            <GooglePlacesAutocomplete
+              ref={destRef}
+              placeholder="¿A dónde vas?"
+              onPress={(data, details = null) => {
+                setDestName(data.description);
+                if (details?.geometry?.location) {
+                  setDestCoord({
+                    latitude: details.geometry.location.lat,
+                    longitude: details.geometry.location.lng,
+                  });
+                }
+              }}
+              query={{
+                key: GOOGLE_API_KEY,
+                language: 'es',
+                components: 'country:co',
+                location: '6.2442,-75.5812',
+                radius: '50000',
+              }}
+              fetchDetails
+              enablePoweredByContainer={false}
+              styles={placesStyles}
+              debounce={300}
+              keepResultsAfterBlur={false}
+              textInputProps={{ placeholderTextColor: '#555' }}
+            />
+          </View>
           {destName ? (
             <TouchableOpacity onPress={() => {
               destRef.current?.clear();
@@ -235,7 +232,7 @@ const ServiceUberScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Mapa */}
+      {/* Mapa — FUERA del ScrollView */}
       <View style={styles.mapWrap}>
         <MapView
           ref={mapRef}
@@ -266,7 +263,10 @@ const ServiceUberScreen = ({ navigation }) => {
 
         <View style={styles.mapStatus}>
           <Icon
-            name={!originCoord ? 'map-marker-plus-outline' : !destCoord ? 'flag-outline' : 'check-circle-outline'}
+            name={
+              !originCoord ? 'map-marker-plus-outline' :
+              !destCoord ? 'flag-outline' : 'check-circle-outline'
+            }
             size={14}
             color={!originCoord ? '#FFC61A' : !destCoord ? '#EF4444' : '#22C55E'}
           />
@@ -276,8 +276,8 @@ const ServiceUberScreen = ({ navigation }) => {
             {!originCoord
               ? 'Escribe el origen arriba'
               : !destCoord
-                ? 'Ahora escribe el destino'
-                : '¡Ruta lista!'}
+              ? 'Ahora escribe el destino'
+              : 'Ruta lista ✓'}
           </Text>
         </View>
       </View>
@@ -285,11 +285,10 @@ const ServiceUberScreen = ({ navigation }) => {
       {/* Panel de vehículos — dentro del ScrollView */}
       <ScrollView
         style={styles.panel}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="always">
+        keyboardShouldPersistTaps="always"
+        showsVerticalScrollIndicator={false}>
 
         <Text style={styles.sectionLabel}>Tipo de vehículo</Text>
-
         {loadingTypes ? (
           <ActivityIndicator color="#FFC61A" style={{ marginVertical: 16 }} />
         ) : vehicleTypes.map(vt => (
@@ -298,10 +297,7 @@ const ServiceUberScreen = ({ navigation }) => {
             style={[styles.vehicleCard, selectedType?.id === vt.id && styles.vehicleSelected]}
             onPress={() => setSelectedType(vt)}
             activeOpacity={0.8}>
-            <View style={[
-              styles.vehicleIconWrap,
-              selectedType?.id === vt.id && { backgroundColor: '#00000020' },
-            ]}>
+            <View style={[styles.vehicleIconWrap, selectedType?.id === vt.id && { backgroundColor: '#00000020' }]}>
               <Icon
                 name={VEHICLE_ICONS[vt.id] || 'car-outline'}
                 size={24}
@@ -381,26 +377,21 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800', color: '#FFF' },
 
   searchPanel: {
-    backgroundColor: '#161616', marginHorizontal: 16,
-    borderRadius: 18, padding: 12,
-    borderWidth: 1, borderColor: '#1E1E1E',
-    zIndex: 9999, elevation: 9999,
-    marginBottom: 10,
+    backgroundColor: '#161616', marginHorizontal: 16, borderRadius: 18,
+    padding: 14, borderWidth: 1, borderColor: '#1E1E1E',
+    zIndex: 999, elevation: 999, marginBottom: 12,
   },
   searchRow: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
-    zIndex: 9999, elevation: 9999,
+    zIndex: 999, elevation: 999,
   },
-  searchDivider: {
-    height: 1, backgroundColor: '#2A2A2A',
-    marginVertical: 8, marginLeft: 22,
-  },
+  searchDivider: { height: 1, backgroundColor: '#2A2A2A', marginVertical: 8, marginLeft: 22 },
   dotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#22C55E' },
   dotRed: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444' },
 
   mapWrap: {
-    height: 180, marginHorizontal: 16,
-    borderRadius: 16, overflow: 'hidden', marginBottom: 10,
+    height: 180, marginHorizontal: 16, borderRadius: 16,
+    overflow: 'hidden', marginBottom: 12,
   },
   map: { flex: 1 },
   mapStatus: {
@@ -416,7 +407,6 @@ const styles = StyleSheet.create({
     color: '#555', fontSize: 12, fontWeight: '700',
     letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase',
   },
-
   vehicleCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#161616', borderRadius: 14, padding: 14,
