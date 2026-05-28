@@ -23,15 +23,25 @@ const LoginScreen = ({ navigation }) => {
   const validateEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
   const handleLogin = async () => {
-    if (!email || !password) { Alert.alert('Campos vacíos', 'Por favor completa todos los campos.'); return; }
-    if (!validateEmail(email)) { Alert.alert('Correo inválido', 'Ingresa un correo electrónico válido.'); return; }
+    if (!email || !password) {
+      Alert.alert('Campos vacíos', 'Por favor completa todos los campos.');
+      return;
+    }
+    if (!validateEmail(email)) {
+      Alert.alert('Correo inválido', 'Ingresa un correo electrónico válido.');
+      return;
+    }
     setLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(auth, email, password);
       const userData = await getUserById(credential.user.uid);
-      if (userData) dispatch(setUser(userData));
+      // ✅ uid siempre llega desde Firebase Auth, no depende de Firestore
+      dispatch(setUser({
+        ...userData,
+        uid: credential.user.uid,
+      }));
       navigation.replace('Main');
-    } catch {
+    } catch (error) {
       Alert.alert('Error', 'Correo o contraseña incorrectos.');
     } finally {
       setLoading(false);
@@ -58,11 +68,12 @@ const LoginScreen = ({ navigation }) => {
           <Text style={styles.cardSub}>Inicia sesión para continuar</Text>
 
           {/* Email */}
+          <Text style={styles.label}>Correo electrónico</Text>
           <View style={[styles.inputWrap, emailFocus && styles.inputFocused]}>
             <Icon name="email-outline" size={20} color={emailFocus ? '#FFC61A' : '#555'} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Correo electrónico"
+              placeholder="correo@ejemplo.com"
               placeholderTextColor="#444"
               value={email}
               onChangeText={setEmail}
@@ -74,11 +85,12 @@ const LoginScreen = ({ navigation }) => {
           </View>
 
           {/* Password */}
+          <Text style={styles.label}>Contraseña</Text>
           <View style={[styles.inputWrap, passFocus && styles.inputFocused]}>
             <Icon name="lock-outline" size={20} color={passFocus ? '#FFC61A' : '#555'} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Contraseña"
+              placeholder="••••••••"
               placeholderTextColor="#444"
               value={password}
               onChangeText={setPassword}
@@ -107,7 +119,6 @@ const LoginScreen = ({ navigation }) => {
           />
         </View>
 
-        {/* Footer */}
         <Text style={styles.footer}>Al continuar aceptas nuestros términos y condiciones</Text>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -128,9 +139,10 @@ const styles = StyleSheet.create({
   card: { backgroundColor: '#161616', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#1E1E1E' },
   cardTitle: { fontSize: 22, fontWeight: '800', color: '#FFF', marginBottom: 4 },
   cardSub: { fontSize: 14, color: '#555', marginBottom: 24 },
+  label: { color: '#777', fontSize: 13, marginBottom: 6, marginTop: 14 },
   inputWrap: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: '#0F0F0F',
-    borderRadius: 14, borderWidth: 1, borderColor: '#2A2A2A', height: 54, marginBottom: 12,
+    borderRadius: 14, borderWidth: 1, borderColor: '#2A2A2A', height: 54, marginBottom: 4,
   },
   inputFocused: { borderColor: '#FFC61A' },
   inputIcon: { paddingHorizontal: 14 },

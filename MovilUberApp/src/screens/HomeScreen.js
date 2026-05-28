@@ -21,18 +21,25 @@ const HomeScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  // ✅ Usa user.uid (no user.docId)
   const fetchHistory = useCallback(async () => {
-    if (user.docId) {
+    if (user.uid) {
       try {
-        const data = await getTripHistory(user.docId);
+        const data = await getTripHistory(user.uid);
         setHistory(data);
-      } catch (e) { console.log(e); }
+      } catch (e) { console.log('fetchHistory error:', e); }
     }
     setLoading(false);
     setRefreshing(false);
-  }, [user.docId]);
+  }, [user.uid]);
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
+
+  // Refresca al volver a la pantalla
+  useEffect(() => {
+    const unsub = navigation.addListener('focus', fetchHistory);
+    return unsub;
+  }, [navigation, fetchHistory]);
 
   const onRefresh = () => { setRefreshing(true); fetchHistory(); };
 
@@ -60,18 +67,12 @@ const HomeScreen = ({ navigation }) => {
             <Text style={styles.tripCurrency}>COP</Text>
           </View>
         </View>
-
         <View style={styles.divider} />
-
         <View style={styles.tripRoute}>
           <View style={styles.routeColumn}>
-            <View style={styles.routeDot}>
-              <View style={styles.dotInnerGreen} />
-            </View>
+            <View style={styles.routeDot}><View style={styles.dotInnerGreen} /></View>
             <View style={styles.routeLine} />
-            <View style={styles.routeDot}>
-              <View style={styles.dotInnerRed} />
-            </View>
+            <View style={styles.routeDot}><View style={styles.dotInnerRed} /></View>
           </View>
           <View style={styles.routeLabels}>
             <Text style={styles.routeOrigin} numberOfLines={1}>{item.origin}</Text>
@@ -85,8 +86,6 @@ const HomeScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
-
-      {/* Header */}
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>Hola, {user.fullName?.split(' ')[0] || 'Pasajero'} 👋</Text>
@@ -97,7 +96,6 @@ const HomeScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Stats */}
       <View style={styles.statsRow}>
         <View style={styles.statCard}>
           <Icon name="map-marker-path" size={22} color="#FFC61A" />
@@ -116,7 +114,6 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Solicitar */}
       <TouchableOpacity style={styles.requestCard} onPress={() => navigation.navigate('Service')} activeOpacity={0.9}>
         <View style={styles.requestLeft}>
           <Text style={styles.requestTitle}>¿A dónde vamos?</Text>
@@ -127,7 +124,6 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </TouchableOpacity>
 
-      {/* Historial */}
       <View style={styles.sectionRow}>
         <Text style={styles.sectionTitle}>Historial</Text>
         <View style={styles.countBadge}>
@@ -168,10 +164,7 @@ const styles = StyleSheet.create({
   statCard: { flex: 1, backgroundColor: '#161616', borderRadius: 16, padding: 14, alignItems: 'center', borderWidth: 1, borderColor: '#1E1E1E' },
   statValue: { fontSize: 20, fontWeight: '800', color: '#FFF', marginTop: 6 },
   statLabel: { fontSize: 11, color: '#555', marginTop: 2 },
-  requestCard: {
-    backgroundColor: '#FFC61A', borderRadius: 20, padding: 20,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24,
-  },
+  requestCard: { backgroundColor: '#FFC61A', borderRadius: 20, padding: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 },
   requestLeft: { flex: 1 },
   requestTitle: { fontSize: 18, fontWeight: '800', color: '#000' },
   requestSub: { fontSize: 13, color: '#00000077', marginTop: 2 },

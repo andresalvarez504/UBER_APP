@@ -1,41 +1,34 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, ActivityIndicator, StatusBar, Animated,
+  View, Text, StyleSheet, TouchableOpacity, Alert,
+  ActivityIndicator, ScrollView, StatusBar, Platform,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
+import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
 import { getVehicleTypes } from '../storage/Firestore.Service';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../storage/Firebase.config';
-import CustomButton from '../components/CustomButton';
 
+const GOOGLE_API_KEY = 'AIzaSyBzRjy2oIcuHcH7Gu-wHTXn4u1vcaWpM6A';
 const MEDELLIN = { latitude: 6.2442, longitude: -75.5812, latitudeDelta: 0.06, longitudeDelta: 0.06 };
-
-const vehicleEmoji = { economy: 'car-outline', xl: 'car-estate', premium: 'star-circle-outline' };
+const VEHICLE_ICONS = { economy: 'car-outline', xl: 'car-estate', premium: 'star-circle-outline' };
 
 const ServiceUberScreen = ({ navigation }) => {
   const user = useSelector(state => state.user);
   const mapRef = useRef(null);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const originRef = useRef(null);
+  const destRef = useRef(null);
 
+  const [originCoord, setOriginCoord] = useState(null);
+  const [destCoord, setDestCoord] = useState(null);
+  const [originName, setOriginName] = useState('');
+  const [destName, setDestName] = useState('');
   const [vehicleTypes, setVehicleTypes] = useState([]);
   const [selectedType, setSelectedType] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingTypes, setLoadingTypes] = useState(true);
-  const [originCoord, setOriginCoord] = useState(null);
-  const [destCoord, setDestCoord] = useState(null);
-  const [mapStep, setMapStep] = useState('origin'); // 'origin' | 'dest' | 'done'
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, { toValue: 1.15, duration: 800, useNativeDriver: true }),
-        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-      ])
-    ).start();
-  }, []);
 
   useEffect(() => {
     const fetchTypes = async () => {
@@ -49,69 +42,198 @@ const ServiceUberScreen = ({ navigation }) => {
     fetchTypes();
   }, []);
 
+  useEffect(() => {
+    if (originCoord && destCoord) {
+      mapRef.current?.fitToCoordinates([originCoord, destCoord], {
+        edgePadding: { top: 60, right: 60, bottom: 60, left: 60 },
+        animated: true,
+      });
+    }
+  }, [originCoord, destCoord]);
+
   const estimatedFare = () => {
     if (!selectedType) return 0;
     return selectedType.baseFare + 5 * selectedType.perKm;
   };
 
-  const handleMapPress = (e) => {
-    const coord = e.nativeEvent.coordinate;
-    if (mapStep === 'origin') {
-      setOriginCoord(coord);
-      setMapStep('dest');
-    } else if (mapStep === 'dest') {
-      setDestCoord(coord);
-      setMapStep('done');
-      mapRef.current?.fitToCoordinates([originCoord, coord], {
-        edgePadding: { top: 60, right: 60, bottom: 60, left: 60 }, animated: true,
-      });
-    }
-  };
-
-  const resetMap = () => {
-    setOriginCoord(null);
-    setDestCoord(null);
-    setMapStep('origin');
-  };
-
   const handleRequest = async () => {
-    if (!originCoord || !destCoord) {
-      Alert.alert('Faltan puntos', 'Marca origen y destino en el mapa.');
+    if (!originName || !destName) {
+      Alert.alert('Faltan datos', 'Selecciona origen y destino.');
+      return;
+    }
+    if (!selectedType) {
+      Alert.alert('Vehículo requerido', 'Selecciona un tipo de vehículo.');
       return;
     }
     setLoading(true);
     try {
-      await addDoc(collection(db, 'trips'), {
+      const tripRef = await addDoc(collection(db, 'trips'), {
         passengerId: user.uid,
-        vehicleTypeId: selectedType?.id || 'economy',
-        originName: `${originCoord.latitude.toFixed(4)}, ${originCoord.longitude.toFixed(4)}`,
-        destName: `${destCoord.latitude.toFixed(4)}, ${destCoord.longitude.toFixed(4)}`,
-        origin: originCoord,
-        destination: destCoord,
+        vehicleTypeId: selectedType.id,
+        originName,
+        destName,
+        origin: originCoord || null,
+        destination: destCoord || null,
         fare: estimatedFare(),
         status: 'requested',
-        paymentMethod: 'stripe',
+        paymentMethod: 'mercadopago',
         createdAt: Timestamp.now(),
       });
-      Alert.alert('¡Viaje solicitado!', 'Un conductor está en camino hacia ti.', [
-        { text: '¡Genial!', onPress: () => navigation.navigate('Home') },
-      ]);
-    } catch {
-      Alert.alert('Error', 'No se pudo solicitar el viaje. Intenta de nuevo.');
+      navigation.navigate('Payment', {
+        tripId: tripRef.id,
+        fare: estimatedFare(),
+        origin: originName,
+        destination: destName,
+        vehicleType: selectedType.name,
+      });
+      originRef.current?.clear();
+      destRef.current?.clear();
+      setOriginCoord(null);
+      setDestCoord(null);
+      setOriginName('');
+      setDestName('');
+    } catch (e) {
+      console.log(e);
+      Alert.alert('Error', 'No se pudo solicitar el viaje.');
     } finally {
       setLoading(false);
     }
   };
 
-  const stepHint = {
-    origin: { icon: 'map-marker-plus-outline', text: 'Toca el mapa para marcar el origen', color: '#22C55E' },
-    dest:   { icon: 'flag-outline',            text: 'Toca para marcar el destino',         color: '#EF4444' },
-    done:   { icon: 'check-circle-outline',    text: 'Ruta lista — elige tu vehículo',      color: '#FFC61A' },
-  }[mapStep];
+  const autocompleteQuery = {
+    key: GOOGLE_API_KEY,
+    language: 'es',
+    components: 'country:co',
+    location: '6.2442,-75.5812',
+    radius: '50000',
+  };
+
+  const autocompleteStyles = {
+    container: { flex: 1 },
+    textInputContainer: { backgroundColor: 'transparent', paddingHorizontal: 0 },
+    textInput: {
+      backgroundColor: '#0F0F0F',
+      color: '#FFF',
+      fontSize: 14,
+      borderRadius: 10,
+      paddingHorizontal: 12,
+      height: 44,
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      marginBottom: 0,
+    },
+    listView: {
+      backgroundColor: '#1E1E1E',
+      borderRadius: 12,
+      marginTop: 2,
+      borderWidth: 1,
+      borderColor: '#2A2A2A',
+      elevation: 10,
+      zIndex: 9999,
+    },
+    row: { backgroundColor: '#1E1E1E', paddingVertical: 12, paddingHorizontal: 14 },
+    separator: { height: 1, backgroundColor: '#2A2A2A' },
+    description: { color: '#CCC', fontSize: 13 },
+    poweredContainer: { backgroundColor: '#1E1E1E', borderTopWidth: 0 },
+    powered: { display: 'none' },
+  };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0A0A0A" />
+
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
+          <Icon name="arrow-left" size={22} color="#FFF" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Solicitar viaje</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {/* Panel de búsqueda — FUERA del ScrollView para que el teclado funcione */}
+      <View style={styles.searchPanel}>
+
+        {/* Origen */}
+        <View style={styles.searchRow}>
+          <View style={styles.dotGreen} />
+          <GooglePlacesAutocomplete
+            ref={originRef}
+            placeholder="¿Desde dónde sales?"
+            minLength={2}
+            fetchDetails={true}
+            onPress={(data, details = null) => {
+              setOriginName(data.description);
+              if (details?.geometry?.location) {
+                setOriginCoord({
+                  latitude: details.geometry.location.lat,
+                  longitude: details.geometry.location.lng,
+                });
+              }
+            }}
+            query={autocompleteQuery}
+            styles={autocompleteStyles}
+            enablePoweredByContainer={false}
+            debounce={400}
+            keepResultsAfterBlur={true}
+            textInputProps={{
+              placeholderTextColor: '#555',
+              returnKeyType: 'search',
+              clearButtonMode: 'while-editing',
+            }}
+          />
+          {originName ? (
+            <TouchableOpacity onPress={() => {
+              originRef.current?.clear();
+              setOriginName('');
+              setOriginCoord(null);
+            }}>
+              <Icon name="close-circle" size={18} color="#555" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+
+        <View style={styles.searchDivider} />
+
+        {/* Destino */}
+        <View style={styles.searchRow}>
+          <View style={styles.dotRed} />
+          <GooglePlacesAutocomplete
+            ref={destRef}
+            placeholder="¿A dónde vas?"
+            minLength={2}
+            fetchDetails={true}
+            onPress={(data, details = null) => {
+              setDestName(data.description);
+              if (details?.geometry?.location) {
+                setDestCoord({
+                  latitude: details.geometry.location.lat,
+                  longitude: details.geometry.location.lng,
+                });
+              }
+            }}
+            query={autocompleteQuery}
+            styles={autocompleteStyles}
+            enablePoweredByContainer={false}
+            debounce={400}
+            keepResultsAfterBlur={true}
+            textInputProps={{
+              placeholderTextColor: '#555',
+              returnKeyType: 'search',
+              clearButtonMode: 'while-editing',
+            }}
+          />
+          {destName ? (
+            <TouchableOpacity onPress={() => {
+              destRef.current?.clear();
+              setDestName('');
+              setDestCoord(null);
+            }}>
+              <Icon name="close-circle" size={18} color="#555" />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      </View>
 
       {/* Mapa */}
       <View style={styles.mapWrap}>
@@ -120,21 +242,16 @@ const ServiceUberScreen = ({ navigation }) => {
           provider={PROVIDER_GOOGLE}
           style={styles.map}
           initialRegion={MEDELLIN}
-          onPress={handleMapPress}
           customMapStyle={darkMapStyle}
-        >
+          showsUserLocation>
           {originCoord && (
             <Marker coordinate={originCoord} title="Origen">
-              <View style={styles.markerOrigin}>
-                <Icon name="map-marker" size={28} color="#22C55E" />
-              </View>
+              <Icon name="map-marker" size={36} color="#22C55E" />
             </Marker>
           )}
           {destCoord && (
             <Marker coordinate={destCoord} title="Destino">
-              <View style={styles.markerDest}>
-                <Icon name="flag-variant" size={28} color="#EF4444" />
-              </View>
+              <Icon name="flag-variant" size={36} color="#EF4444" />
             </Marker>
           )}
           {originCoord && destCoord && (
@@ -147,51 +264,32 @@ const ServiceUberScreen = ({ navigation }) => {
           )}
         </MapView>
 
-        {/* Hint */}
-        <Animated.View style={[styles.hintBadge, { transform: [{ scale: mapStep === 'done' ? pulseAnim : 1 }] }]}>
-          <Icon name={stepHint.icon} size={16} color={stepHint.color} />
-          <Text style={[styles.hintText, { color: stepHint.color }]}>{stepHint.text}</Text>
-        </Animated.View>
-
-        {/* Reset */}
-        {mapStep !== 'origin' && (
-          <TouchableOpacity style={styles.resetBtn} onPress={resetMap}>
-            <Icon name="restart" size={16} color="#FFF" />
-            <Text style={styles.resetText}>Reiniciar</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Back */}
-        <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" size={20} color="#FFF" />
-        </TouchableOpacity>
+        <View style={styles.mapStatus}>
+          <Icon
+            name={!originCoord ? 'map-marker-plus-outline' : !destCoord ? 'flag-outline' : 'check-circle-outline'}
+            size={14}
+            color={!originCoord ? '#FFC61A' : !destCoord ? '#EF4444' : '#22C55E'}
+          />
+          <Text style={[styles.mapStatusText, {
+            color: !originCoord ? '#FFC61A' : !destCoord ? '#EF4444' : '#22C55E',
+          }]}>
+            {!originCoord
+              ? 'Escribe el origen arriba'
+              : !destCoord
+                ? 'Ahora escribe el destino'
+                : '¡Ruta lista!'}
+          </Text>
+        </View>
       </View>
 
-      {/* Panel */}
-      <ScrollView style={styles.panel} showsVerticalScrollIndicator={false}>
-        <View style={styles.panelHandle} />
+      {/* Panel de vehículos — dentro del ScrollView */}
+      <ScrollView
+        style={styles.panel}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="always">
 
-        <Text style={styles.panelTitle}>Confirma tu viaje</Text>
+        <Text style={styles.sectionLabel}>Tipo de vehículo</Text>
 
-        {/* Ruta */}
-        <View style={styles.routeCard}>
-          <View style={styles.routeRow}>
-            <Icon name="circle-slice-8" size={14} color="#22C55E" />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {originCoord ? `${originCoord.latitude.toFixed(4)}, ${originCoord.longitude.toFixed(4)}` : 'Toca el mapa para marcar el origen'}
-            </Text>
-          </View>
-          <View style={styles.routeLineV} />
-          <View style={styles.routeRow}>
-            <Icon name="flag-variant" size={14} color="#EF4444" />
-            <Text style={styles.routeText} numberOfLines={1}>
-              {destCoord ? `${destCoord.latitude.toFixed(4)}, ${destCoord.longitude.toFixed(4)}` : 'Toca el mapa para marcar el destino'}
-            </Text>
-          </View>
-        </View>
-
-        {/* Vehículos */}
-        <Text style={styles.sectionLabel}>Elige tu vehículo</Text>
         {loadingTypes ? (
           <ActivityIndicator color="#FFC61A" style={{ marginVertical: 16 }} />
         ) : vehicleTypes.map(vt => (
@@ -200,49 +298,61 @@ const ServiceUberScreen = ({ navigation }) => {
             style={[styles.vehicleCard, selectedType?.id === vt.id && styles.vehicleSelected]}
             onPress={() => setSelectedType(vt)}
             activeOpacity={0.8}>
-            <View style={styles.vehicleIconWrap}>
-              <Icon name={vehicleEmoji[vt.id] || 'car-outline'} size={26} color={selectedType?.id === vt.id ? '#000' : '#FFC61A'} />
+            <View style={[
+              styles.vehicleIconWrap,
+              selectedType?.id === vt.id && { backgroundColor: '#00000020' },
+            ]}>
+              <Icon
+                name={VEHICLE_ICONS[vt.id] || 'car-outline'}
+                size={24}
+                color={selectedType?.id === vt.id ? '#000' : '#FFC61A'}
+              />
             </View>
             <View style={styles.vehicleInfo}>
-              <Text style={[styles.vehicleName, selectedType?.id === vt.id && styles.vehicleNameSelected]}>{vt.name}</Text>
-              <Text style={styles.vehicleDesc}>
-                <Icon name="account-group-outline" size={12} color="#666" /> {vt.capacity} · {vt.description}
+              <Text style={[styles.vehicleName, selectedType?.id === vt.id && { color: '#000' }]}>
+                {vt.name}
+              </Text>
+              <Text style={[styles.vehicleDesc, selectedType?.id === vt.id && { color: '#00000088' }]}>
+                {vt.capacity} personas · ${(vt.baseFare + 5 * vt.perKm).toLocaleString()}
               </Text>
             </View>
-            <View style={styles.vehiclePriceWrap}>
-              <Text style={[styles.vehiclePrice, selectedType?.id === vt.id && styles.vehiclePriceSelected]}>
-                ${(vt.baseFare + 5 * vt.perKm).toLocaleString()}
-              </Text>
-              {selectedType?.id === vt.id && (
-                <Icon name="check-circle" size={16} color="#000" style={{ marginTop: 4 }} />
-              )}
-            </View>
+            {selectedType?.id === vt.id && (
+              <Icon name="check-circle" size={20} color="#000" />
+            )}
           </TouchableOpacity>
         ))}
 
-        {/* Tarifa */}
         {selectedType && (
           <View style={styles.fareCard}>
             <View style={styles.fareRow}>
-              <Icon name="cash-multiple" size={20} color="#FFC61A" />
               <Text style={styles.fareLabel}>Tarifa estimada</Text>
+              <Text style={styles.fareValue}>${estimatedFare().toLocaleString()} COP</Text>
             </View>
-            <Text style={styles.fareValue}>${estimatedFare().toLocaleString()} COP</Text>
-            <Text style={styles.fareNote}>
-              <Icon name="information-outline" size={12} color="#555" /> Estimado para ~5 km · puede variar
-            </Text>
+            <Text style={styles.fareNote}>Estimado para ~5 km · puede variar</Text>
           </View>
         )}
 
-        <CustomButton
-          title={mapStep === 'done' ? 'Confirmar viaje' : 'Marca origen y destino'}
+        <TouchableOpacity
+          style={[
+            styles.requestBtn,
+            (loading || !originName || !destName) && styles.requestBtnDisabled,
+          ]}
           onPress={handleRequest}
-          loading={loading}
-          disabled={mapStep !== 'done'}
-          icon="car-arrow-right"
-        />
+          disabled={loading || !originName || !destName}
+          activeOpacity={0.9}>
+          {loading ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <>
+              <Icon name="car-arrow-right" size={22} color="#000" style={{ marginRight: 8 }} />
+              <Text style={styles.requestBtnText}>
+                {!originName || !destName ? 'Selecciona origen y destino' : 'Confirmar viaje'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-        <View style={{ height: 32 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -253,66 +363,89 @@ const darkMapStyle = [
   { elementType: 'labels.text.fill', stylers: [{ color: '#746855' }] },
   { elementType: 'labels.text.stroke', stylers: [{ color: '#242f3e' }] },
   { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#38414e' }] },
-  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#212a37' }] },
   { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#746855' }] },
   { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#17263c' }] },
 ];
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0A0A' },
-  mapWrap: { height: '45%', position: 'relative' },
-  map: { flex: 1 },
+
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingTop: 52, paddingHorizontal: 20, paddingBottom: 12,
+  },
   backBtn: {
-    position: 'absolute', top: 48, left: 16,
-    width: 40, height: 40, borderRadius: 12, backgroundColor: '#000000CC',
-    justifyContent: 'center', alignItems: 'center',
+    width: 40, height: 40, borderRadius: 12,
+    backgroundColor: '#161616', justifyContent: 'center', alignItems: 'center',
   },
-  hintBadge: {
-    position: 'absolute', bottom: 16, left: 16, right: 16,
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    backgroundColor: '#000000DD', paddingHorizontal: 16, paddingVertical: 10,
-    borderRadius: 24, borderWidth: 1, borderColor: '#2A2A2A',
+  headerTitle: { fontSize: 18, fontWeight: '800', color: '#FFF' },
+
+  searchPanel: {
+    backgroundColor: '#161616', marginHorizontal: 16,
+    borderRadius: 18, padding: 12,
+    borderWidth: 1, borderColor: '#1E1E1E',
+    zIndex: 9999, elevation: 9999,
+    marginBottom: 10,
   },
-  hintText: { fontSize: 13, fontWeight: '600', flex: 1 },
-  resetBtn: {
-    position: 'absolute', top: 48, right: 16,
+  searchRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    zIndex: 9999, elevation: 9999,
+  },
+  searchDivider: {
+    height: 1, backgroundColor: '#2A2A2A',
+    marginVertical: 8, marginLeft: 22,
+  },
+  dotGreen: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#22C55E' },
+  dotRed: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#EF4444' },
+
+  mapWrap: {
+    height: 180, marginHorizontal: 16,
+    borderRadius: 16, overflow: 'hidden', marginBottom: 10,
+  },
+  map: { flex: 1 },
+  mapStatus: {
+    position: 'absolute', bottom: 10, left: 10, right: 10,
     flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#000000CC', paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 20, borderWidth: 1, borderColor: '#333',
+    backgroundColor: '#000000CC', paddingHorizontal: 12, paddingVertical: 7,
+    borderRadius: 20,
   },
-  resetText: { color: '#FFF', fontSize: 12, fontWeight: '600' },
-  markerOrigin: { alignItems: 'center' },
-  markerDest: { alignItems: 'center' },
-  panel: { flex: 1, backgroundColor: '#0A0A0A', paddingHorizontal: 20 },
-  panelHandle: { width: 40, height: 4, backgroundColor: '#2A2A2A', borderRadius: 2, alignSelf: 'center', marginVertical: 12 },
-  panelTitle: { fontSize: 20, fontWeight: '800', color: '#FFF', marginBottom: 16 },
-  routeCard: { backgroundColor: '#161616', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#1E1E1E' },
-  routeRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  routeText: { color: '#AAA', fontSize: 13, flex: 1 },
-  routeLineV: { width: 1, height: 16, backgroundColor: '#2A2A2A', marginLeft: 7, marginVertical: 4 },
-  sectionLabel: { color: '#555', fontSize: 12, fontWeight: '700', letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase' },
+  mapStatusText: { fontSize: 12, fontWeight: '600' },
+
+  panel: { flex: 1, paddingHorizontal: 16 },
+  sectionLabel: {
+    color: '#555', fontSize: 12, fontWeight: '700',
+    letterSpacing: 1, marginBottom: 10, textTransform: 'uppercase',
+  },
+
   vehicleCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
-    backgroundColor: '#161616', borderRadius: 16, padding: 14,
+    backgroundColor: '#161616', borderRadius: 14, padding: 14,
     marginBottom: 8, borderWidth: 1.5, borderColor: '#1E1E1E',
   },
   vehicleSelected: { borderColor: '#FFC61A', backgroundColor: '#FFC61A' },
-  vehicleIconWrap: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#FFC61A15', justifyContent: 'center', alignItems: 'center' },
-  vehicleInfo: { flex: 1 },
-  vehicleName: { color: '#FFF', fontWeight: '700', fontSize: 15 },
-  vehicleNameSelected: { color: '#000' },
-  vehicleDesc: { color: '#666', fontSize: 12, marginTop: 3 },
-  vehiclePriceWrap: { alignItems: 'flex-end' },
-  vehiclePrice: { color: '#FFC61A', fontWeight: '800', fontSize: 15 },
-  vehiclePriceSelected: { color: '#000' },
-  fareCard: {
-    backgroundColor: '#161616', borderRadius: 16, padding: 16,
-    marginVertical: 16, borderWidth: 1, borderColor: '#FFC61A33',
+  vehicleIconWrap: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: '#FFC61A15', justifyContent: 'center', alignItems: 'center',
   },
-  fareRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  vehicleInfo: { flex: 1 },
+  vehicleName: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  vehicleDesc: { color: '#666', fontSize: 12, marginTop: 2 },
+
+  fareCard: {
+    backgroundColor: '#161616', borderRadius: 14, padding: 14,
+    marginBottom: 14, borderWidth: 1, borderColor: '#FFC61A33',
+  },
+  fareRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   fareLabel: { color: '#FFF', fontWeight: '600', fontSize: 14 },
-  fareValue: { color: '#FFC61A', fontSize: 28, fontWeight: '800', marginBottom: 4 },
-  fareNote: { color: '#555', fontSize: 12 },
+  fareValue: { color: '#FFC61A', fontWeight: '800', fontSize: 18 },
+  fareNote: { color: '#555', fontSize: 11, marginTop: 4 },
+
+  requestBtn: {
+    backgroundColor: '#FFC61A', borderRadius: 14, height: 56,
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center',
+  },
+  requestBtnDisabled: { opacity: 0.4 },
+  requestBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
 });
 
 export default ServiceUberScreen;

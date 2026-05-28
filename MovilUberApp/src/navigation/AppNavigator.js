@@ -11,13 +11,16 @@ import HomeScreen from '../screens/HomeScreen';
 import ServiceUberScreen from '../screens/ServiceUberScreen';
 import ConfigUserScreen from '../screens/ConfigUserScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import PaymentScreen from '../screens/PaymentScreen';
+import InvoiceScreen from '../screens/InvoiceScreen';
+import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
 
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
 const MainTabs = () => (
   <Tab.Navigator
-    screenOptions={({ route }) => ({
+    screenOptions={{
       headerShown: false,
       tabBarStyle: {
         backgroundColor: '#111',
@@ -30,7 +33,7 @@ const MainTabs = () => (
       tabBarActiveTintColor: '#FFC61A',
       tabBarInactiveTintColor: '#444',
       tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
-    })}>
+    }}>
     <Tab.Screen
       name="Home"
       component={HomeScreen}
@@ -43,8 +46,8 @@ const MainTabs = () => (
       name="Service"
       component={ServiceUberScreen}
       options={{
-        tabBarLabel: 'Viaje',
-        tabBarIcon: ({ color, focused }) => (
+        tabBarLabel: () => null,
+        tabBarIcon: ({ focused }) => (
           <View style={{
             width: 52, height: 52, borderRadius: 18, marginBottom: 4,
             backgroundColor: focused ? '#FFC61A' : '#1A1A1A',
@@ -55,7 +58,6 @@ const MainTabs = () => (
             <Icon name="car-outline" size={24} color={focused ? '#000' : '#444'} />
           </View>
         ),
-        tabBarLabel: () => null,
       }}
     />
     <Tab.Screen
@@ -75,11 +77,10 @@ const AppNavigator = () => (
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="CreateUser" component={CreateUserScreen} options={{ gestureEnabled: false }} />
       <Stack.Screen name="Main" component={MainTabs} options={{ gestureEnabled: false }} />
-      <Stack.Screen
-        name="ChangePassword"
-        component={ChangePasswordScreen}
-        options={{ presentation: 'modal' }}
-      />
+      <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ presentation: 'modal' }} />
+      <Stack.Screen name="Payment" component={PaymentScreen} />
+      <Stack.Screen name="Invoice" component={InvoiceScreen} options={{ gestureEnabled: false }} />
+      <Stack.Screen name="PaymentHistory" component={PaymentHistoryScreen} />
     </Stack.Navigator>
   </NavigationContainer>
 );
